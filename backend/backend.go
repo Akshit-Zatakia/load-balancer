@@ -5,6 +5,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"sync"
+	"time"
 )
 
 type Backend interface {
@@ -12,6 +13,7 @@ type Backend interface {
 	IsAlive() bool
 	GetURL() *url.URL
 	GetActiveConnections() int
+	GetAvgRespTime() float64
 	Serve(http.ResponseWriter, *http.Request)
 }
 
@@ -20,6 +22,7 @@ type backend struct {
 	alive        bool
 	mux          sync.RWMutex
 	connections  int
+	AvgRespTime  float64
 	reverseProxy *httputil.ReverseProxy
 }
 
@@ -47,6 +50,13 @@ func (b *backend) GetURL() *url.URL {
 	return b.url
 }
 
+func (b *backend) GetAvgRespTime() float64 {
+	b.mux.RLock()
+	avgRespTime := b.AvgRespTime
+	b.mux.RUnlock()
+	return avgRespTime
+}
+
 func (b *backend) Serve(rw http.ResponseWriter, req *http.Request) {
 	defer func() {
 		b.mux.Lock()
@@ -57,7 +67,14 @@ func (b *backend) Serve(rw http.ResponseWriter, req *http.Request) {
 	b.mux.Lock()
 	b.connections++
 	b.mux.Unlock()
+	start := time.Now()
 	b.reverseProxy.ServeHTTP(rw, req)
+	responseTime := time.Since(start)
+	b.mux.Lock()
+	alpha := 0.5 // weight for averaging
+	newAvg := alpha*float64(responseTime.Milliseconds()) + (1-alpha)*b.AvgRespTime
+	b.AvgRespTime = newAvg
+	b.mux.Unlock()
 }
 
 func NewBackend(u *url.URL, rp *httputil.ReverseProxy) Backend {

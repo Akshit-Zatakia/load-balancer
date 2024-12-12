@@ -42,12 +42,15 @@ type LBStrategy int
 const (
 	RoundRobin LBStrategy = iota
 	LeastConnected
+	LeastResponseTime
 )
 
 func GetLBStrategy(strategy string) LBStrategy {
 	switch strategy {
 	case "least-connection":
 		return LeastConnected
+	case "least-response":
+		return LeastResponseTime
 	default:
 		return RoundRobin
 	}
